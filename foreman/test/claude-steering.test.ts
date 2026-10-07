@@ -22,6 +22,7 @@ interface Call {
   agent: string;
   prompt: string;
   cwd: string;
+  resume?: string;
 }
 
 type WorkerScript = (o: Options, p: string, aborted: Promise<never>) => AsyncGenerator<SDKMessage>;
@@ -32,7 +33,7 @@ function fake(calls: Call[], worker: Record<string, WorkerScript>) {
     const p = String(prompt);
     const lead = 'create_task' in tools(options);
     const agent = lead ? 'marlow' : (/[\\/](\w+)-t\d+$/.exec(options.cwd!)?.[1] ?? '?');
-    calls.push({ agent, prompt: p, cwd: options.cwd! });
+    calls.push({ agent, prompt: p, cwd: options.cwd!, ...(options.resume ? { resume: options.resume } : {}) });
     const aborted = new Promise<never>((_, reject) => options.abortController!.signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true }));
     aborted.catch(() => undefined);
     async function* run(): AsyncGenerator<SDKMessage> {
@@ -243,6 +244,42 @@ describe('claude backend steering (fake SDK)', () => {
     expect(fm.agent('kit')!.activity).toMatch(/max turns/);
     expect(fm.tasks.get('t1')!.blockedReason).toMatch(/error_max_turns/);
     expect(h.events.some((e) => e.type === 'agent.upsert' && e.agent.id === 'kit' && e.agent.state === 'error')).toBe(true);
+    await fm.close();
+  });
+  it('retry resumes a blocked task in the same worker session and worktree', async () => {
+    const calls: Call[] = [];
+    const kit: WorkerScript = async function* (o) {
+      yield init(sid(6));
+      if (calls.filter((c) => c.agent === 'kit').length === 1) {
+        yield maxTurns(sid(6));
+        return;
+      }
+      await callTool(o, 'update_task', { task_id: 't1', status: 'review', summary: 'recovered after retry' });
+      yield ok(sid(6));
+    };
+
+    const { h } = await boot('kit', calls, { kit });
+    const fm = h.fm;
+
+    await fm.submitGoal('version flag');
+    await until(() => fm.tasks.get('t1')?.status === 'blocked');
+
+    expect(fm.store.data.sessions['kit:t1']?.sessionId).toBe(sid(6));
+    expect(calls.filter((c) => c.agent === 'kit')).toHaveLength(1);
+
+    const worktree = fm.tasks.get('t1')!.worktree;
+
+    fm.taskAction('t1', 'retry');
+
+    expect(fm.tasks.get('t1')!.status).toBe('doing');
+    await until(() => calls.filter((c) => c.agent === 'kit').length === 2);
+
+    const resumed = calls.filter((c) => c.agent === 'kit')[1]!;
+    expect(resumed.resume).toBe(sid(6));
+    expect(resumed.cwd).toBe(calls.filter((c) => c.agent === 'kit')[0]!.cwd);
+    expect(resumed.prompt).toMatch(/retried t1/);
+    expect(fm.tasks.get('t1')!.worktree).toBe(worktree);
+
     await fm.close();
   });
 });

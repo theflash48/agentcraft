@@ -1,6 +1,6 @@
 # AgentCraft — Spec
 
-Minecraft as a spatial UI for real, multi-agent Claude work. The user should be able to use this
+Minecraft as a spatial UI for real, multi-agent coding work. The user should be able to use this
 **for their actual daily work**: practicality is a hard requirement, equal to the visual bar.
 
 ## North star
@@ -15,8 +15,8 @@ of value is lost if the game closes, because the game is only a view.
 
 ```
 Minecraft 26.3 (Fabric mod "agentcraft", Java 25)          Foreman (Node 22 + TypeScript)
- ├─ integrated server side: entities, blocks, HQ builder <-WS-> ├─ AgentManager (Claude Agent SDK sessions)
- ├─ client side: screens, renderers, HUD, keybinds           │   backends: "claude" (real) | "sim" (scripted)
+ ├─ integrated server side: entities, blocks, HQ builder <-WS-> ├─ AgentManager (Codex/Claude sessions)
+ ├─ client side: screens, renderers, HUD, keybinds           │   backends: "codex" | "claude" (real) | "sim" (scripted)
  └─ DevBridge: camera / screenshot / scene control           ├─ TaskGraph (persisted JSON)
                                                              ├─ MessageBus (agent<->agent, agent<->user)
                                                              ├─ Memory (markdown files, shared + per-agent)

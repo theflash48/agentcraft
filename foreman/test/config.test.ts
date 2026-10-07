@@ -26,6 +26,29 @@ describe('loadConfig argument checking', () => {
     expect(cfg.notify).toBe(false);
   });
 
+  it('configures the codex backend independently', () => {
+    const cfg = load(['--backend', 'codex', '--workers', 'kit,wren', '--model', 'gpt-test', '--lead-effort', 'high']);
+    expect(cfg.backend).toBe('codex');
+    expect(cfg.profile).toBe('codex');
+    expect(cfg.codex.workers).toEqual(['kit', 'wren']);
+    expect(cfg.codex.leadModel).toBe('gpt-test');
+    expect(cfg.codex.workerModel).toBe('gpt-test');
+    expect(cfg.codex.leadEffort).toBe('high');
+    expect(cfg.notify).toBe(true);
+    expect(cfg.signMerges).toBe(true);
+  });
+
+  it('defaults both Codex roles to gpt-5.6-sol while keeping role overrides configurable', () => {
+    home = tempDir();
+    const defaults = loadConfig(['--home', home, '--backend', 'codex'], {});
+    expect(defaults.codex.leadModel).toBe('gpt-5.6-sol');
+    expect(defaults.codex.workerModel).toBe('gpt-5.6-sol');
+
+    const overridden = loadConfig(['--home', home, '--backend', 'codex', '--lead-model', 'lead-custom', '--worker-model', 'worker-custom'], {});
+    expect(overridden.codex.leadModel).toBe('lead-custom');
+    expect(overridden.codex.workerModel).toBe('worker-custom');
+  });
+
   it('reads lead read commands as a comma list or a config.json array', () => {
     home = tempDir();
     const read = (args: string[], env = {}) => loadConfig(['--home', home!, ...args], env).claude.leadReadCommands;

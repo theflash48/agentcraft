@@ -1,7 +1,7 @@
 # AgentCraft Foreman
 
-The Foreman is the brain of AgentCraft: a Node 22 + TypeScript service that runs a team of Claude
-agents (one lead, up to five workers) on a real git repo and streams everything to the Minecraft
+The Foreman is the brain of AgentCraft: a Node 22 + TypeScript service that runs a team of Codex or
+Claude agents (one lead, up to five workers) on a real git repo and streams everything to the Minecraft
 mod over a WebSocket. The game is only a view. The Foreman owns all state, keeps working while
 Minecraft is closed, and survives restarts.
 
@@ -20,6 +20,7 @@ Minecraft is closed, and survives restarts.
      |- Notifier      src/notifier.ts    desktop notification + console bell when you are needed
      |- Store         src/store.ts       atomic JSON state + JSONL logs under AGENTCRAFT_HOME
      `- Backend       claude: src/agents/claude/  (Claude Agent SDK sessions)
+                      codex:  src/agents/codex/   (Codex SDK threads)
                       sim:    src/agents/sim/     (deterministic scripted team, real git)
 ```
 
@@ -33,6 +34,9 @@ npm install
 npm run start -- --backend claude --repo C:\path\to\your\repo
 # personal use only: your local `claude` CLI login instead of an API key
 npm run start -- --backend claude --repo C:\path\to\your\repo --use-claude-login
+
+# Codex agents: uses the local `codex login` ChatGPT-plan authentication
+npm run start -- --backend codex --repo C:\path\to\your\repo
 
 # simulated team on a fresh sandbox repo (no API calls) - for demos and screenshot QA
 npm run start -- --backend sim --reset --speed 2
@@ -71,7 +75,7 @@ most ~100 ms of state, and interrupted agent turns resume on the next start.
 
 | flag / env | default | |
 | --- | --- | --- |
-| `--backend sim\|claude` / `AGENTCRAFT_BACKEND` | `claude` | |
+| `--backend sim\|claude\|codex` / `AGENTCRAFT_BACKEND` | `claude` | |
 | `--port` / `AGENTCRAFT_PORT` | `7878` | WebSocket port (127.0.0.1 only) |
 | `--home` / `AGENTCRAFT_HOME` | `~/.agentcraft` | state root |
 | `--user-name` / `AGENTCRAFT_USER_NAME` / config `userName` | OS user name | how the agents address you; sent to the mod in `foreman.status` |
@@ -79,9 +83,9 @@ most ~100 ms of state, and interrupted agent turns resume on the next start.
 | `--repo <path>[,<path>]` | | register repos at start (sim: a fresh `sandbox/sim-demo`) |
 | `--goal "<text>"` | | submit a goal right away |
 | `--reset` | | wipe this profile first |
-| `--notify` / `--no-notify` / `AGENTCRAFT_NOTIFY` | on for claude, off for sim | Windows, macOS or Linux (`notify-send`) notifications |
+| `--notify` / `--no-notify` / `AGENTCRAFT_NOTIFY` | on for real backends, off for sim | Windows, macOS or Linux (`notify-send`) notifications |
 | `--toast-silent` | | toast without sound |
-| `--model`, `--lead-model`, `--worker-model` | lead `opus`, workers `sonnet` | any model id/alias the CLI accepts |
+| `--model`, `--lead-model`, `--worker-model` | Claude: `opus`/`sonnet`; Codex: `gpt-5.6-sol` for lead and workers | any model id/alias the provider accepts |
 | `--effort low..max` | `medium` | |
 | `--workers 3` or `--workers kit,wren` | `juniper,kit,wren` | team (others stay "off shift") |
 | `--max-concurrent` | `3` | workers running at once |
@@ -94,13 +98,18 @@ most ~100 ms of state, and interrupted agent turns resume on the next start.
 | `--no-sign-merges` / `AGENTCRAFT_SIGN_MERGES=0` | signed if your git config signs (claude) | never sign approved merge commits; the sim never signs |
 | sim: `--speed`, `--seed`, `--autostart`, `--showcase [late]`, `--auto-answer`, `--no-ambient` | | |
 
-`<home>/config.json` can hold the same settings (`{"backend":"claude","claude":{"workers":["kit","wren"]}}`).
+`<home>/config.json` can hold the same settings (`{"backend":"codex","codex":{"workers":["kit","wren"]}}`).
 While running, `<home>/<profile>/foreman.json` records `{pid, port, host, backend, profile, version, startedAt}`
 so launch scripts can find it; `<home>/foreman.json` holds the same for the first live Foreman (when
 it exits, another live profile takes its place). A second Foreman on a profile that is already
 running is refused (two would both write its `state.json`).
 
-## How the claude backend works
+## How the real backends work
+
+Both `claude` and `codex` use this lifecycle. Codex threads stream through the official Codex SDK;
+the backend exposes the same AgentCraft MCP tools on a turn-scoped loopback server and resumes
+threads by their persisted ids. Run `codex login` with ChatGPT before first use. The Codex backend
+does not accept API-key authentication and strips `OPENAI_API_KEY` and `CODEX_API_KEY` from its runtime.
 
 1. **Plan** (lead, read-only in your checkout): explores with Read/Grep/Glob, writes `Plan: ...` to
    shared memory, creates tasks with deps and assignees via `create_task`, may `ask_user`.

@@ -13,7 +13,7 @@ AgentCraft shows your team as characters in a Minecraft HQ. The user is ${userNa
 Your job: turn ${userName()}'s goal into a short plan and small tasks for the workers, review their finished work, and ask ${userName()} only when a decision is genuinely theirs.
 
 Rules
-- You are READ-ONLY. Explore with Read/Grep/Glob, and Bash only to inspect (git log, an issue tracker's show commands). Never edit files: workers make every change in their own git worktree.
+- You are READ-ONLY. Explore with the available read/search tools and shell commands only to inspect (for example git log or an issue tracker's show command). Never edit files: workers make every change in their own git worktree.
 - Write the plan to shared memory with write_memory (title starting "Plan:"): approach, task list, risks. Keep it under 40 lines.
 - Create tasks with create_task: each small enough for one worker in one branch, with concrete acceptance criteria in the description, deps by task id, and a suggested assignee. Prefer 2-6 tasks.
 - Plan for parallel work: your workers run at the same time, each in its own branch. Split by feature (not by layer) and give each task its own new files where you can (its own module and test file). Add a dep only when a task needs code another task writes. Small additions to the same shared file (a new case in a switch, a line in the help text, an export) do NOT need a dep: if two such merges conflict, the Foreman sends the later branch back to its worker to merge the base branch and resolve it. Serialize only tasks that rewrite the same code. A worker's branch starts from the current base branch when it begins (dependencies already merged); never tell workers to fetch, pull or rebase (there is no remote).
@@ -70,7 +70,7 @@ For pull requests:
   return `New goal from ${userName()}:
 "${goal.text}"
 
-Repository: ${repoPath} (base branch ${branch}). Explore it read-only (Glob/Grep to find files, Read for a file - Read cannot open a directory), then:
+Repository: ${repoPath} (base branch ${branch}). Explore it read-only with the available search/read tools, then:
 1. write_memory the plan (title "Plan: ...", scope shared)
 2. create_task for each task (deps + assignee)
 3. send_message to "all" with a two-line briefing

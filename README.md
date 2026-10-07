@@ -184,6 +184,7 @@ cd agentcraft
 
 tools\launch.ps1 -Backend sim                    # try it first: a simulated team, no API usage
 tools\launch.ps1 -Repo C:\path\to\your\repo      # real agents on your repo
+tools\launch.ps1 -Backend codex -Repo C:\path\to\your\repo  # Codex SDK (ChatGPT `codex login` first)
 tools\stop.ps1                                   # stop everything launch.ps1 started
 ```
 
@@ -194,6 +195,7 @@ checkout (the script selects that JDK without changing your system Java):
 ```sh
 node tools/unix.mjs launch --backend sim                 # try the studio without API usage
 node tools/unix.mjs stop --profile sim
+node tools/unix.mjs launch --backend codex --repo /path/to/your/repo
 node tools/unix.mjs launch --repo /path/to/your/repo --use-claude-login
 node tools/unix.mjs stop
 ```
@@ -255,7 +257,7 @@ flowchart LR
         UI["Console, decisions,<br/>diff review, library"]
     end
     subgraph foreman ["Foreman (Node + TypeScript)"]
-        Team["Lead + workers<br/>(Claude Agent SDK)"]
+        Team["Lead + workers<br/>(Codex or Claude SDK)"]
         State["Task graph, messages,<br/>memory, decisions"]
         Git["Worktrees, diffs,<br/>approved merges"]
     end
@@ -266,7 +268,7 @@ flowchart LR
 
 - **The Foreman** (`foreman/`) runs the agents and owns all the state: tasks and their
   dependencies, messages, shared memory, decisions and worktrees. Everything is saved to disk and
-  Claude sessions resume by id, so it survives restarts and crashes.
+  provider sessions resume by id, so it survives restarts and crashes.
 - **The mod** (`mod/`) is the window and the controls. It draws what the Foreman knows and sends
   back what you decide. If the game closes, no work is lost.
 - **The sim backend** is a scripted team that exercises every feature with real git edits. It powers

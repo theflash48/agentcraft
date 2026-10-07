@@ -48,6 +48,7 @@ and Fabric by itself. Java 25 must be installed (Temurin 25: https://adoptium.ne
 ```powershell
 tools\launch.ps1                              # claude backend, state in ~/.agentcraft, Foreman :7878, DevBridge :7879
 tools\launch.ps1 -Repo C:\code\life-tracker   # also register a repo with the Foreman
+tools\launch.ps1 -Backend codex -Repo C:\code\life-tracker  # Codex SDK (ChatGPT `codex login` first)
 tools\launch.ps1 -Backend sim                 # scripted demo team (no API calls), demo repo in sandbox/
 tools\launch.ps1 -Showcase                    # static showcase state (sim); -Showcase late for the later one
 tools\stop.ps1                                # stop what launch.ps1 started (game + Foreman)
@@ -70,7 +71,7 @@ If the game of this checkout is already running it is reused (one client per che
 
 | parameter | default | |
 | --- | --- | --- |
-| `-Backend sim\|claude` | `claude` (`AGENTCRAFT_BACKEND`) | `-Showcase` implies `sim` |
+| `-Backend sim\|claude\|codex` | `claude` (`AGENTCRAFT_BACKEND`) | `-Showcase` implies `sim` |
 | `-Repo <path>[,<path>]` | | registered at start, or sent as `repo.add` to a running Foreman |
 | `-Profile <name>` | backend name; `showcase` / `showcase-late` | state lives in `<home>/<profile>` |
 | `-Showcase [busy\|late]` | | hold a static scripted state (QA screenshots); always a fresh (`--reset`) profile |
@@ -80,7 +81,7 @@ If the game of this checkout is already running it is reused (one client per che
 | `-Reset` | | wipe the profile before starting (new Foreman only) |
 | `-Speed x`, `-Autostart`, `-Goal "..."` | | sim speed / start the scripted goal / submit a goal at start |
 | `-ForemanArgs @('--workers','kit,wren')` | | extra Foreman flags (`npm run start -- --help`) |
-| `-Notify` / `-NoNotify` | Foreman default (on for claude) | Windows toasts |
+| `-Notify` / `-NoNotify` | Foreman default (on for real backends) | Windows toasts |
 | `-NoGame`, `-NoForeman`, `-NoWait` | | only the Foreman / only the game / don't wait for the world |
 | `-GradleHome <dir>` | `GRADLE_USER_HOME` or `<main checkout>\.gradle-home` | |
 | `-TimeoutSec N` | 600 | how long to wait for the world |

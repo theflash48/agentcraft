@@ -73,7 +73,7 @@ export class SimBackend implements Backend {
     }
     if (st.finished) {
       this.fm.setGoal(goal.id, { status: 'cancelled' });
-      this.fm.bus.send('marlow', 'user', 'The simulated team only knows one script and it is done. Restart the Foreman with --reset to replay it, or use --backend claude for real work.');
+      this.fm.bus.send('marlow', 'user', 'The simulated team only knows one script and it is done. Restart the Foreman with --reset to replay it, or use --backend codex or --backend claude for real work.');
       return;
     }
     st.goalId = goal.id;

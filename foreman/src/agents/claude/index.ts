@@ -127,6 +127,9 @@ export interface ClaudeBackendOptions {
   skipAuthCheck?: boolean;
   /** injectable for tests: pull request intake (default: git + gh, see pulls.ts) */
   pullFetcher?: PullFetcher;
+  /** provider identity for compatible transports that reuse the orchestration engine */
+  backendName?: 'claude' | 'codex';
+  displayName?: string;
 }
 
 export interface PullFetcher {
@@ -137,7 +140,8 @@ export interface PullFetcher {
 const defaultPullFetcher: PullFetcher = { origin: (p) => githubOrigin(p), fetch: (p, n) => fetchPulls(p, n) };
 
 export class ClaudeBackend implements Backend {
-  readonly name = 'claude' as const;
+  readonly name: 'claude' | 'codex';
+  private readonly displayName: string;
   private queues = new Map<string, Job[]>();
   private running = new Map<string, Running>();
   private pausedJobs = new Map<string, Job>();
@@ -165,6 +169,8 @@ export class ClaudeBackend implements Backend {
     private cfg: ClaudeConfig,
     private opts: ClaudeBackendOptions = {},
   ) {
+    this.name = opts.backendName ?? 'claude';
+    this.displayName = opts.displayName ?? 'Claude';
     this.queryFn = opts.queryFn ?? query;
     this.pullFetcher = opts.pullFetcher ?? defaultPullFetcher;
     this.hooks = {
@@ -183,10 +189,10 @@ export class ClaudeBackend implements Backend {
 
   private get st(): ClaudeState {
     const b = this.fm.store.data.backend;
-    let s = b.claude as ClaudeState | undefined;
+    let s = b[this.name] as ClaudeState | undefined;
     if (!s) {
       s = { inflight: {}, ciFixes: {}, stopped: [] };
-      b.claude = s;
+      b[this.name] = s;
     }
     s.inflight ??= {};
     s.ciFixes ??= {};
@@ -235,7 +241,7 @@ export class ClaudeBackend implements Backend {
 
   async checkAuth(): Promise<boolean> {
     if (this.opts.skipAuthCheck) {
-      this.fm.setStatus({ auth: 'ok', message: `Claude (lead ${this.cfg.leadModel}, workers ${this.cfg.workerModel})` });
+      this.fm.setStatus({ auth: 'ok', message: `${this.displayName} (lead ${this.cfg.leadModel}, workers ${this.cfg.workerModel})` });
       return true;
     }
     // API authentication by default; the claude.ai login only when explicitly opted into
@@ -256,8 +262,8 @@ export class ClaudeBackend implements Backend {
       const account = this.cfg.useClaudeLogin
         ? [info.organization, info.subscriptionType].filter(Boolean).join(' · ') || info.apiProvider || 'ok'
         : [api.ok ? api.source : 'API', info.organization].filter(Boolean).join(' · ');
-      this.authFailed = false;
-      this.fm.setStatus({ auth: 'ok', account, message: `Claude (lead ${this.cfg.leadModel}, workers ${this.cfg.workerModel})` });
+      this.clearAuthFailed();
+      this.fm.setStatus({ auth: 'ok', account, message: `${this.displayName} (lead ${this.cfg.leadModel}, workers ${this.cfg.workerModel})` });
       this.fm.log.info(`claude auth ok (${account})`);
       return true;
     } catch (e) {
@@ -276,7 +282,12 @@ export class ClaudeBackend implements Backend {
     }
   }
 
-  private markAuthFailed(message: string): void {
+  /** Allow compatible provider transports to drive the shared scheduling auth guard. */
+  protected clearAuthFailed(): void {
+    this.authFailed = false;
+  }
+
+  protected markAuthFailed(message: string): void {
     this.authFailed = true;
     this.fm.setStatus({ auth: 'failed', message });
     this.fm.log.error(message);
@@ -474,7 +485,7 @@ export class ClaudeBackend implements Backend {
   async submitGoal(goal: Goal): Promise<void> {
     if (this.authFailed) {
       this.fm.setGoal(goal.id, { status: 'failed' });
-      throw new ClientError(`Claude is not available: ${this.fm.status.message ?? 'auth failed'}`);
+      throw new ClientError(`${this.displayName} is not available: ${this.fm.status.message ?? 'auth failed'}`);
     }
     const repo = this.fm.repos.require(goal.repoId!);
     if (this.isStopped(LEAD)) {
@@ -790,14 +801,20 @@ export class ClaudeBackend implements Backend {
       }
       stats = mapper.stats;
       if (stats.sessionId) this.recordSession(job.sessionKey, stats.sessionId, model, stats);
-      if (stats.authFailed) this.markAuthFailed(`Claude authentication failed (${stats.authFailed}). Run \`claude\` and /login, then restart the Foreman.`);
+      if (stats.authFailed) {
+        this.markAuthFailed(
+          this.name === 'claude'
+            ? `Claude authentication failed (${stats.authFailed}). Run \`claude\` and /login, then restart the Foreman.`
+            : `Codex authentication failed (${stats.authFailed}). Restart the Foreman after signing in.`,
+        );
+      }
     } catch (e) {
       const aborted = abort.signal.aborted;
       if (!aborted) {
         const msg = (e as Error).message ?? String(e);
         this.fm.log.error(`${agentId} ${job.kind} failed: ${msg}`);
         this.fm.agentLog(agentId, 'error', `session error: ${truncate(msg, 400)}`);
-        if (/auth|login|credential|401/i.test(msg)) this.markAuthFailed(`Claude authentication failed: ${truncate(msg, 160)}`);
+        if (/auth|login|credential|401/i.test(msg)) this.markAuthFailed(`${this.displayName} authentication failed: ${truncate(msg, 160)}`);
         stats = { isError: true, errors: [msg] };
       }
     } finally {
@@ -1124,6 +1141,22 @@ export class ClaudeBackend implements Backend {
   }
 
   onTaskAction(task: Task, action: 'reassign' | 'cancel' | 'retry' | 'prioritize'): void {
+    if (action === 'retry' && task.assignee && task.repoId && task.worktree) {
+      const session = this.fm.store.data.sessions[`${task.assignee}:${task.id}`];
+      const wt = this.fm.repos.findWorktree(task.repoId, task.worktree);
+      if (
+        session?.sessionId &&
+        wt?.status === 'active' &&
+        !this.running.has(task.assignee) &&
+        !this.pausedJobs.has(task.assignee)
+      ) {
+        this.sendBackToWorker(
+          task.id,
+          `${userName()} retried ${task.id}. Continue from the existing worktree and session, re-check the current task state, and finish the remaining work.`,
+        );
+        return;
+      }
+    }
     if (action === 'cancel' || action === 'reassign') {
       for (const [id, r] of this.running) {
         if (r.job.taskId === task.id && id !== LEAD && (action === 'cancel' || task.assignee !== id)) this.abortTurn(r, 'cancel');
